@@ -37,7 +37,7 @@ async def start_cmd(message: types.Message):
 
 if __name__ == '__main__':
     async def main():
-        scheduler.add_job(parse_and_send, trigger='interval', minutes=1)
+        scheduler.add_job(parse_and_send, trigger='interval', hours=1)
         scheduler.start()
         await dp.start_polling()
 
