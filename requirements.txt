@@ -1,7 +1,0 @@
-aiogram==3.4.1
-python-dotenv
-fastapi
-uvicorn
-apscheduler
-beautifulsoup4
-requests
