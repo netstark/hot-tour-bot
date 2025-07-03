@@ -8,7 +8,7 @@ from aiogram.types import Message, BotCommand, InlineKeyboardMarkup, InlineKeybo
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import StateFilter
+from aiogram.filters import StateFilter, Command
 
 from parser import check_new_tours
 from filters import load_filters, save_filters
@@ -26,40 +26,32 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
-
-@dp.message_handler(commands=["start"])
+@dp.message(Command("start"))
 async def cmd_start(message: Message):
     if message.chat.id != OWNER_ID:
         return
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✈️ Змінити місто", callback_data="change_city")]
-    ])
-
-    await message.answer("Бот працює 🟢", reply_markup=keyboard)
+    await message.answer("Бот працює 🟢")
 
     tours = await check_new_tours()
     if tours:
         await message.answer(f"🟢 Знайдено {len(tours)} нових турів")
         for tour in tours:
-            await bot.send_message(TOUR_CHAT_ID, tour)
+            await bot.send_message(GROUP_ID, tour)  # змінено на GROUP_ID
     else:
         await message.answer("🟡 Нових турів не знайдено")
 
-
-@dp.callback_query_handler(lambda c: c.data == "change_city")
-async def ask_city(callback: types.CallbackQuery):
-    if callback.message.chat.id != OWNER_ID:
+@dp.message(lambda message: message.text == "✈️ Змінити місто")
+async def change_city(message: Message):
+    if message.chat.id != OWNER_ID:
         return
-    await callback.message.answer("Введи нове місто вильоту:")
+    await message.answer("Введи нове місто вильоту:")
 
-    @dp.message_handler()
-    async def save_city(message: Message):
+    @dp.message()
+    async def get_new_city(msg: Message):
         filters = load_filters()
-        filters["departure_city"] = message.text
+        filters["departure_city"] = msg.text
         save_filters(filters)
-        await message.answer(f"Місто вильоту змінено на: {message.text}")
-
+        await msg.answer(f"Місто вильоту змінено на: {msg.text}")
 
 @app.get("/check")
 async def check():
@@ -67,15 +59,12 @@ async def check():
         new_tours = await check_new_tours()
         if new_tours:
             for tour in new_tours:
-                await bot.send_message(TOUR_CHAT_ID, tour)
-            await bot.send_message(GROUP_ID, f"🟢 Знайдено {len(new_tours)} нових турів")
+                await bot.send_message(GROUP_ID, f"🟢 Знайдено 1 нових турів\n{tour}")
             return {"status": f"Знайдено {len(new_tours)} нових турів"}
-        await bot.send_message(GROUP_ID, "🟡 Нових турів не знайдено")
         return {"status": "🔘 Нових турів не знайдено"}
     except Exception as e:
         await bot.send_message(GROUP_ID, f"❌ Помилка парсингу: {e}")
         return {"status": "Помилка"}
-
 
 if __name__ == "__main__":
     import uvicorn
