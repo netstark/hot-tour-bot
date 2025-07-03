@@ -4,17 +4,17 @@ import logging
 import json
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message, BotCommand, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
+from aiogram.types import Message
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import StateFilter, Command
 
 from parser import check_new_tours
 from filters import load_filters, save_filters
 
 from fastapi import FastAPI
-app = FastAPI()
+from threading import Thread
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID"))
@@ -26,6 +26,9 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
+app = FastAPI()
+
+# == Команда старт
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     if message.chat.id != OWNER_ID:
@@ -36,23 +39,29 @@ async def cmd_start(message: Message):
     if tours:
         await message.answer(f"🟢 Знайдено {len(tours)} нових турів")
         for tour in tours:
-            await bot.send_message(GROUP_ID, tour)  # змінено на GROUP_ID
+            await bot.send_message(GROUP_ID, tour)
     else:
         await message.answer("🟡 Нових турів не знайдено")
 
-@dp.message(lambda message: message.text == "✈️ Змінити місто")
-async def change_city(message: Message):
+# == Зміна міста
+@dp.message(lambda m: m.text and m.text.startswith("✈️ Змінити місто"))
+async def change_city(message: Message, state: FSMContext):
     if message.chat.id != OWNER_ID:
         return
     await message.answer("Введи нове місто вильоту:")
+    await state.set_state("waiting_for_city")
 
-    @dp.message()
-    async def get_new_city(msg: Message):
+@dp.message(lambda m: True)
+async def get_city(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == "waiting_for_city":
         filters = load_filters()
-        filters["departure_city"] = msg.text
+        filters["departure_city"] = message.text
         save_filters(filters)
-        await msg.answer(f"Місто вильоту змінено на: {msg.text}")
+        await message.answer(f"Місто вильоту змінено на: {message.text}")
+        await state.clear()
 
+# == HTTP endpoint перевірки
 @app.get("/check")
 async def check():
     try:
@@ -66,6 +75,8 @@ async def check():
         await bot.send_message(GROUP_ID, f"❌ Помилка парсингу: {e}")
         return {"status": "Помилка"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=10000)
+# == Запуск бота в окремому потоці
+def start_polling():
+    asyncio.run(dp.start_polling(bot))
+
+Thread(target=start_polling).start()
