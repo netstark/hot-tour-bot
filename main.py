@@ -1,63 +1,56 @@
-import logging
 import os
-from fastapi import FastAPI, Request
+import asyncio
+import logging
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Update
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from dotenv import load_dotenv
+from aiogram.types import BotCommand
+from aiogram.enums import ParseMode
+from aiogram.utils.markdown import hbold
 from parser import check_new_tours
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID"))
 GROUP_ID = int(os.getenv("GROUP_ID"))
 TOUR_CHAT_ID = int(os.getenv("TOUR_CHAT_ID"))
 
-bot = Bot(token=BOT_TOKEN, parse_mode=types.ParseMode.HTML)
-dp = Dispatcher(bot, storage=MemoryStorage())
-app = FastAPI()
-scheduler = AsyncIOScheduler()
+logging.basicConfig(level=logging.INFO)
 
-@app.post("/")
-async def webhook_handler(request: Request):
-    data = await request.json()
-    update = Update(**data)
-    await dp.process_update(update)
-    return {"ok": True}
+bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher()
 
-@dp.message_handler(commands=['start'])
-async def start_cmd(message: types.Message):
-    await message.answer("Бот працює 🟢")
+@dp.message(commands=["start"])
+async def start(message: types.Message):
+    if message.from_user.id == OWNER_ID:
+        await message.answer("Бот працює 🟢")
 
-@app.get("/check")
-async def trigger_parse():
+@dp.message(commands=["check"])
+async def manual_check(message: types.Message):
+    if message.from_user.id == OWNER_ID:
+        await run_check()
+
+async def run_check():
     try:
         new_tours = await check_new_tours()
         if new_tours:
+            await bot.send_message(GROUP_ID, f"🟢 Знайдено {len(new_tours)} нових турів")
             for tour in new_tours:
                 await bot.send_message(TOUR_CHAT_ID, tour)
-            return {"status": f"Знайдено {len(new_tours)} нових турів"}
         else:
-            await bot.send_message(GROUP_ID, "🟡 Нових турів не знайдено")
-            return {"status": "Без нових турів"}
+            await bot.send_message(TOUR_CHAT_ID, "🟡 Нових турів не знайдено")
     except Exception as e:
         await bot.send_message(GROUP_ID, f"❌ Помилка парсингу: {e}")
-        return {"status": "Помилка"}
+        print(e)
 
-async def scheduled_parse():
-    try:
-        new_tours = await check_new_tours()
-        if new_tours:
-            for tour in new_tours:
-                await bot.send_message(TOUR_CHAT_ID, tour)
-        else:
-            await bot.send_message(GROUP_ID, "🟡 Нових турів не знайдено (авто)")
-    except Exception as e:
-        await bot.send_message(GROUP_ID, f"❌ Автопомилка: {e}")
+@dp.message()
+async def fallback(message: types.Message):
+    if message.from_user.id == OWNER_ID:
+        await message.answer("Введи /check або /start")
 
-@app.on_event("startup")
-async def on_startup():
-    await bot.set_webhook("https://hot-tour-bot.onrender.com")
-    scheduler.add_job(scheduled_parse, trigger="interval", minutes=30)
-    scheduler.start()
+async def main():
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Запустити бота"),
+        BotCommand(command="check", description="Перевірити вручну"),
+    ])
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
