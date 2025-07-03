@@ -3,13 +3,14 @@ import asyncio
 import logging
 import json
 
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, Router
 from aiogram.types import Message, BotCommand, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import StateFilter
+from aiogram.filters import CommandStart
 
+from fastapi import FastAPI
 from parser import check_new_tours
 from filters import load_filters, save_filters
 
@@ -22,8 +23,11 @@ logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
+router = Router()
+dp.include_router(router)
 
-@dp.message_handler(commands=["start"])
+# /start
+@router.message(CommandStart())
 async def cmd_start(message: Message):
     if message.chat.id != OWNER_ID:
         return
@@ -37,25 +41,30 @@ async def cmd_start(message: Message):
     else:
         await message.answer("🟡 Нових турів не знайдено")
 
-@dp.message_handler(lambda message: message.text == "✈️ Змінити місто")
-async def change_city(message: Message):
+# Змінити місто
+@router.message(lambda m: m.text == "✈️ Змінити місто")
+async def change_city(message: Message, state: FSMContext):
     if message.chat.id != OWNER_ID:
         return
     await message.answer("Введи нове місто вильоту:")
+    await state.set_state("waiting_for_city")
 
-    @dp.message_handler()
-    async def get_new_city(msg: Message):
+@router.message()
+async def handle_any_message(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == "waiting_for_city":
         filters = load_filters()
-        filters["departure_city"] = msg.text
+        filters["departure_city"] = message.text
         save_filters(filters)
-        await msg.answer(f"Місто вильоту змінено на: {msg.text}")
+        await message.answer(f"Місто вильоту змінено на: {message.text}")
+        await state.clear()
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=10000)
-
-from fastapi import FastAPI
+# FastAPI
 app = FastAPI()
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(dp.start_polling(bot))
 
 @app.get("/check")
 async def check():
