@@ -1,31 +1,44 @@
-import json
 import os
-from parsers.poehalisnami import get_poehalisnami_tours
+import asyncio
+import logging
+import json
 
-CACHE_FILE = "sent_tours.json"
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.filters import StateFilter, Command
 
-def load_cache():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            return set(json.load(f))
-    return set()
+from filters import load_filters
+from sent_store import SentStore
 
-def save_cache(cache):
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(cache), f, ensure_ascii=False, indent=2)
+async def parse_poehalisnami(filters):
+    return ["🔥 Тур з poehalisnami.ua: Назва готелю"]
 
-async def check_new_tours():
-    all_tours = get_poehalisnami_tours()
-    cache = load_cache()
-    new_tours = []
+async def parse_otpusk(filters):
+    return ["🌴 Тур з otpusk.ua: Назва готелю"]
 
-    for tour in all_tours:
-        tour_id = tour.strip()[-100:]  # можна брати link, якщо буде зручніше
-        if tour_id not in cache:
-            new_tours.append(tour)
-            cache.add(tour_id)
+async def parse_farvater(filters):
+    return ["🌊 Тур з farvater.travel: Назва готелю"]
 
-    if new_tours:
-        save_cache(cache)
+async def parse_joinup(filters):
+    return ["☀️ Тур з joinup.ua: Назва готелю"]
 
-    return new_tours
+sent_store = SentStore("sent_tours.json")
+
+async def check_all_sites():
+    filters = load_filters()
+    all_new_tours = []
+    
+    for parser in [parse_poehalisnami, parse_otpusk, parse_farvater, parse_joinup]:
+        try:
+            tours = await parser(filters)
+            for tour in tours:
+                if not sent_store.is_sent(tour):
+                    all_new_tours.append(tour)
+                    sent_store.mark_as_sent(tour)
+        except Exception as e:
+            logging.error(f"❌ Помилка у {parser.__name__}: {e}")
+
+    return all_new_tours
