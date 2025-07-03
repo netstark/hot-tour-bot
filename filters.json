@@ -1,0 +1,8 @@
+{
+  "departure_city": "Варшава",
+  "max_price": 1000,
+  "min_days": 5,
+  "max_days": 10,
+  "country": "Єгипет",
+  "min_rating": 4.0
+}
