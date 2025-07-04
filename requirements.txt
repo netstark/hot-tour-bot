@@ -1,6 +1,0 @@
-fastapi
-uvicorn
-aiogram==3.2.0
-apscheduler
-httpx
-beautifulsoup4
