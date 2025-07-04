@@ -1,6 +1,0 @@
-aiogram
-fastapi
-uvicorn
-beautifulsoup4
-requests
-lxml
