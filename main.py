@@ -1,13 +1,20 @@
-
 import asyncio
-from parser import check_all_sites
+import logging
+
+from fastapi import FastAPI
 from telegram_bot import send_tours
-from filters import load_filters
 
-async def main():
-    filters = load_filters()
-    new_tours = await check_all_sites(filters)
-    await send_tours(new_tours)
+# Увімкнення логування
+logging.basicConfig(level=logging.INFO)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# Створення FastAPI застосунку
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"status": "Бот працює 🟢"}
+
+@app.get("/check")
+async def check():
+    await send_tours()
+    return {"status": "Перевірка виконана"}
